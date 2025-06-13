@@ -14,48 +14,46 @@ resource "azurerm_resource_group" "southeastasia" {
   location = "Southeast Asia"
 }
 
-# Create virtual networks in each region
-resource "azurerm_virtual_network" "eastus" {
+module "vnet_eastus" {
+  source              = "./modules/vnet"
   name                = "eastus-vnet"
   address_space       = ["10.1.0.0/16"]
-  location            = azurerm_resource_group.eastus.location
   resource_group_name = azurerm_resource_group.eastus.name
+  location            = azurerm_resource_group.eastus.location
+  subnets = [
+    {
+      name             = "default"
+      address_prefixes = ["10.1.1.0/24"]
+    }
+  ]
 }
 
-resource "azurerm_virtual_network" "westeurope" {
-  name                = "we-vnet"
+module "vnet_westeurope" {
+  source              = "./modules/vnet"
+  name                = "westeurope-vnet"
   address_space       = ["10.2.0.0/16"]
-  location            = azurerm_resource_group.westeurope.location
   resource_group_name = azurerm_resource_group.westeurope.name
+  location            = azurerm_resource_group.westeurope.location
+  subnets = [
+    {
+      name             = "default"
+      address_prefixes = ["10.2.1.0/24"]
+    }
+  ]
 }
 
-resource "azurerm_virtual_network" "southeastasia" {
-  name                = "sea-vnet"
+module "vnet_southeastasia" {
+  source              = "./modules/vnet"
+  name                = "southeastasia-vnet"
   address_space       = ["10.3.0.0/16"]
-  location            = azurerm_resource_group.southeastasia.location
   resource_group_name = azurerm_resource_group.southeastasia.name
-}
-
-# Create subnets in each region
-resource "azurerm_subnet" "eastus" {
-  name                 = "default"
-  resource_group_name  = azurerm_resource_group.eastus.name
-  virtual_network_name = azurerm_virtual_network.eastus.name
-  address_prefixes     = ["10.1.1.0/24"]
-}
-
-resource "azurerm_subnet" "westeurope" {
-  name                 = "default"
-  resource_group_name  = azurerm_resource_group.westeurope.name
-  virtual_network_name = azurerm_virtual_network.westeurope.name
-  address_prefixes     = ["10.2.1.0/24"]
-}
-
-resource "azurerm_subnet" "southeastasia" {
-  name                 = "default"
-  resource_group_name  = azurerm_resource_group.southeastasia.name
-  virtual_network_name = azurerm_virtual_network.southeastasia.name
-  address_prefixes     = ["10.3.1.0/24"]
+  location            = azurerm_resource_group.southeastasia.location
+  subnets = [
+    {
+      name             = "default"
+      address_prefixes = ["10.3.1.0/24"]
+    }
+  ]
 }
 
 # Create public IPs for each web server
@@ -91,7 +89,7 @@ resource "azurerm_network_interface" "eastus" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.eastus.id
+    subnet_id                     = module.vnet_eastus.subnets[0].id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.eastus.id
   }
@@ -104,7 +102,7 @@ resource "azurerm_network_interface" "westeurope" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.westeurope.id
+    subnet_id                     = module.vnet_westeurope.subnets[0].id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.westeurope.id
   }
@@ -117,117 +115,112 @@ resource "azurerm_network_interface" "southeastasia" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.southeastasia.id
+    subnet_id                     = module.vnet_southeastasia.subnets[0].id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.southeastasia.id
   }
 }
 
-# Create network security groups to allow HTTP traffic
-resource "azurerm_network_security_group" "eastus" {
+module "nsg_eastus" {
+  source              = "./modules/nsg"
   name                = "eastus-nsg"
   location            = azurerm_resource_group.eastus.location
   resource_group_name = azurerm_resource_group.eastus.name
-
-  security_rule {
-    name                       = "allow-http"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "80"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "allow-ssh"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
+  security_rules = [
+    {
+      name                       = "allow-http"
+      priority                   = 100
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "80"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "allow-ssh"
+      priority                   = 110
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "22"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+  ]
+  associations = [
+    azurerm_network_interface.eastus.id
+  ]
 }
 
-resource "azurerm_network_security_group" "westeurope" {
+module "nsg_westeurope" {
+  source              = "./modules/nsg"
   name                = "we-nsg"
   location            = azurerm_resource_group.westeurope.location
   resource_group_name = azurerm_resource_group.westeurope.name
-
-  security_rule {
-    name                       = "allow-http"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "80"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "allow-ssh"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
+  security_rules = [
+    {
+      name                       = "allow-http"
+      priority                   = 100
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "80"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "allow-ssh"
+      priority                   = 110
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "22"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+  ]
+  associations = [
+    azurerm_network_interface.westeurope.id
+  ]
 }
 
-resource "azurerm_network_security_group" "southeastasia" {
+module "nsg_southeastasia" {
+  source              = "./modules/nsg"
   name                = "sea-nsg"
   location            = azurerm_resource_group.southeastasia.location
   resource_group_name = azurerm_resource_group.southeastasia.name
-
-  security_rule {
-    name                       = "allow-http"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "80"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "allow-ssh"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-}
-
-# Associate NSGs with NICs
-resource "azurerm_network_interface_security_group_association" "eastus" {
-  network_interface_id      = azurerm_network_interface.eastus.id
-  network_security_group_id = azurerm_network_security_group.eastus.id
-}
-
-resource "azurerm_network_interface_security_group_association" "westeurope" {
-  network_interface_id      = azurerm_network_interface.westeurope.id
-  network_security_group_id = azurerm_network_security_group.westeurope.id
-}
-
-resource "azurerm_network_interface_security_group_association" "southeastasia" {
-  network_interface_id      = azurerm_network_interface.southeastasia.id
-  network_security_group_id = azurerm_network_security_group.southeastasia.id
+  security_rules = [
+    {
+      name                       = "allow-http"
+      priority                   = 100
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "80"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "allow-ssh"
+      priority                   = 110
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "22"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+  ]
+  associations = [
+    azurerm_network_interface.southeastasia.id
+  ]
 }
 
 # Create Linux VMs with NGINX web server
@@ -237,14 +230,10 @@ resource "azurerm_linux_virtual_machine" "eastus" {
   location            = azurerm_resource_group.eastus.location
   size                = "Standard_B1s"
   admin_username      = "adminuser"
+  admin_password      = "Demo12345!"
   network_interface_ids = [
     azurerm_network_interface.eastus.id,
   ]
-
-  admin_ssh_key {
-    username   = "adminuser"
-    public_key = file("~/.ssh/id_rsa.pub")
-  }
 
   os_disk {
     caching              = "ReadWrite"
@@ -269,7 +258,7 @@ resource "azurerm_linux_virtual_machine" "eastus" {
       - [systemctl, start, nginx]
       - [sh, -c, "echo '<html><body><h1>East US Region</h1><p>This is the East US web server</p></body></html>' > /var/www/html/index.nginx-debian.html"]
   EOF
-)
+  )
 }
 
 resource "azurerm_linux_virtual_machine" "westeurope" {
@@ -278,14 +267,10 @@ resource "azurerm_linux_virtual_machine" "westeurope" {
   location            = azurerm_resource_group.westeurope.location
   size                = "Standard_B1s"
   admin_username      = "adminuser"
+  admin_password      = "Demo12345!"
   network_interface_ids = [
     azurerm_network_interface.westeurope.id,
   ]
-
-  admin_ssh_key {
-    username   = "adminuser"
-    public_key = file("~/.ssh/id_rsa.pub")
-  }
 
   os_disk {
     caching              = "ReadWrite"
@@ -309,7 +294,7 @@ resource "azurerm_linux_virtual_machine" "westeurope" {
       - [systemctl, start, nginx]
       - [sh, -c, "echo '<html><body><h1>West Europe Region</h1><p>This is the West Europe web server</p></body></html>' > /var/www/html/index.nginx-debian.html"]
   EOF
-)
+  )
 }
 
 resource "azurerm_linux_virtual_machine" "southeastasia" {
@@ -318,14 +303,10 @@ resource "azurerm_linux_virtual_machine" "southeastasia" {
   location            = azurerm_resource_group.southeastasia.location
   size                = "Standard_B1s"
   admin_username      = "adminuser"
+  admin_password      = "Demo12345!"
   network_interface_ids = [
     azurerm_network_interface.southeastasia.id,
   ]
-
-  admin_ssh_key {
-    username   = "adminuser"
-    public_key = file("~/.ssh/id_rsa.pub")
-  }
 
   os_disk {
     caching              = "ReadWrite"
@@ -349,48 +330,38 @@ resource "azurerm_linux_virtual_machine" "southeastasia" {
       - [systemctl, start, nginx]
       - [sh, -c, "echo '<html><body><h1>Southeast Asia Region</h1><p>This is the Southeast Asia web server</p></body></html>' > /var/www/html/index.nginx-debian.html"]
   EOF
-)
+  )
 }
 
-# Create Traffic Manager Profile
-resource "azurerm_traffic_manager_profile" "example" {
-  name                   = "demo-traffic-manager"
-  resource_group_name    = azurerm_resource_group.eastus.name
-  traffic_routing_method = "Performance"
-
-  dns_config {
-    relative_name = "demo-traffic-manager"
-    ttl           = 30
-  }
-
-  monitor_config {
-    protocol                     = "HTTP"
-    port                         = 80
-    path                         = "/"
-    interval_in_seconds          = 30
-    timeout_in_seconds           = 10
-    tolerated_number_of_failures = 3
-  }
+module "traffic_manager" {
+  source                                      = "./modules/traffic-manager"
+  name                                        = "traffic-manager"
+  resource_group_name                         = azurerm_resource_group.eastus.name
+  traffic_routing_method                      = "Performance"
+  dns_relative_name                           = "traffic-manager"
+  dns_ttl                                     = 30
+  monitor_config_protocol                     = "HTTP"
+  monitor_config_port                         = 80
+  monitor_config_path                         = "/"
+  monitor_config_interval_in_seconds          = 30
+  monitor_config_timeout_in_seconds           = 10
+  monitor_config_tolerated_number_of_failures = 3
+  endpoints = [
+    {
+      name               = "eastus-endpoint"
+      target_resource_id = azurerm_public_ip.eastus.id
+      weight             = 1
+    },
+    {
+      name               = "westeurope-endpoint"
+      target_resource_id = azurerm_public_ip.westeurope.id
+      weight             = 1
+    },
+    {
+      name               = "southeastasia-endpoint"
+      target_resource_id = azurerm_public_ip.southeastasia.id
+      weight             = 1
+    }
+  ]
 }
 
-# Add endpoints to Traffic Manager
-resource "azurerm_traffic_manager_azure_endpoint" "eastus" {
-  name               = "eastus-endpoint"
-  profile_id         = azurerm_traffic_manager_profile.example.id
-  target_resource_id = azurerm_public_ip.eastus.id
-  weight             = 1
-}
-
-resource "azurerm_traffic_manager_azure_endpoint" "westeurope" {
-  name               = "westeurope-endpoint"
-  profile_id         = azurerm_traffic_manager_profile.example.id
-  target_resource_id = azurerm_public_ip.westeurope.id
-  weight             = 1
-}
-
-resource "azurerm_traffic_manager_azure_endpoint" "southeastasia" {
-  name               = "southeastasia-endpoint"
-  profile_id         = azurerm_traffic_manager_profile.example.id
-  target_resource_id = azurerm_public_ip.southeastasia.id
-  weight             = 1
-}
